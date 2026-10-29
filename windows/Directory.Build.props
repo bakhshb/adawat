@@ -10,7 +10,9 @@
     <LangVersion>latest</LangVersion>
     <RuntimeIdentifiers>win-arm64;win-x64</RuntimeIdentifiers>
     <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0'">linux-x64;linux-arm64</RuntimeIdentifiers>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
+    <!-- Where the app looks for updates. A fork's release workflow sets its own (-p:UpdateRepository=owner/repo). -->
+    <UpdateRepository Condition="'$(UpdateRepository)' == ''">motalim-ai/adawat</UpdateRepository>
     <Company>Motalim</Company>
     <Product>Adawat</Product>
     <Copyright>Motalim · GPL v3</Copyright>
@@ -20,5 +22,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)GlobalUsings.cs" Link="GlobalUsings.cs" />
+    <AssemblyMetadata Include="UpdateRepository" Value="$(UpdateRepository)" />
   </ItemGroup>
 </Project>

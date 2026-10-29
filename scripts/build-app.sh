@@ -6,7 +6,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-VERSION="1.1.0"
+# One version for every platform: the Windows build settings hold it.
+VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' windows/Directory.Build.props)
 INSTALL=false
 DMG=false
 for arg in "$@"; do

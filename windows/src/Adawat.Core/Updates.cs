@@ -11,7 +11,9 @@ public sealed record Release(Version Version, string Notes, string Asset, Uri Do
 /// for that file. The only time Adawat goes online, and only while "Check for updates" is on or the user asks.</summary>
 public static class Updates
 {
-    public const string Repository = "motalim-ai/adawat";
+    /// <summary>The GitHub repository whose releases this build installs: set at build time (UpdateRepository).</summary>
+    public static string Repository { get; } = typeof(Updates).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+        .Cast<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "UpdateRepository")?.Value ?? "motalim-ai/adawat";
     public static string ReleasesPage => $"https://github.com/{Repository}/releases/latest";
 
     /// <summary>Three parts, as release tags have: 1.1.0.0 would compare as newer than v1.1.0.</summary>

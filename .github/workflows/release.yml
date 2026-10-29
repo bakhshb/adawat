@@ -1,0 +1,257 @@
+# Builds Adawat for every platform and uploads the files to a draft GitHub Release, which you check and publish by hand.
+# Run it from Actions → Release → Run workflow. The version comes from windows/Directory.Build.props; see docs/RELEASING.md.
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  # Builds made here look for updates in this repository, not in the original one.
+  UPDATE_REPOSITORY: ${{ github.repository }}
+
+jobs:
+  test:
+    name: Tests and version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: One version everywhere
+        id: version
+        run: |
+          windows=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' windows/Directory.Build.props)
+          linux=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' linux/Directory.Build.props)
+          android=$(sed -n 's:.*versionName = "\(.*\)".*:\1:p' android/app/build.gradle.kts)
+          echo "Windows $windows, Linux $linux, Android $android"
+          if [ "$windows" != "$linux" ] || [ "$windows" != "$android" ]; then
+            echo "::error::Set the same version in windows/Directory.Build.props, linux/Directory.Build.props and android/app/build.gradle.kts"
+            exit 1
+          fi
+          echo "version=$windows" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Run the tests
+        run: dotnet test windows/tests/Adawat.Core.Tests
+
+  windows:
+    name: Windows installers
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Fetch ffmpeg
+        shell: bash
+        run: |
+          # Git Bash has sha256sum but may lack shasum, which the script uses for its list of sources.
+          command -v shasum >/dev/null || { shasum() { shift 2; sha256sum "$@"; }; export -f shasum; }
+          bash windows/tools/fetch-ffmpeg.sh
+      - name: Make sure Inno Setup is installed
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+      - name: Publish and build the installers
+        shell: pwsh
+        working-directory: windows
+        run: |
+          $version = "${{ needs.test.outputs.version }}"
+          foreach ($arch in "x64", "arm64") {
+            # The same steps as windows/tools/build-installer.sh, run here instead of over SSH.
+            $out = "build/publish/app-$arch"
+            foreach ($project in "Adawat.App", "Adawat.Cli") {
+              dotnet publish "src/$project/$project.csproj" -f net10.0-windows10.0.22621.0 -c Release -r "win-$arch" --self-contained `
+                -p:DebugType=none -p:UpdateRepository=$env:UPDATE_REPOSITORY -o $out
+              if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            }
+            New-Item -ItemType Directory -Force "$out/tools" | Out-Null
+            Copy-Item "build/ffmpeg/win-$arch/ffmpeg.exe" "$out/tools/"
+            Copy-Item "build/ffmpeg/win-$arch/LICENSE.txt" "$out/tools/ffmpeg-LICENSE.txt"
+            & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q /DArch=$arch /DAppVersion=$version "/DSource=$((Resolve-Path $out).Path)" installer\Adawat.iss
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          Get-ChildItem build/installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: windows/build/installer/Adawat-Setup-*.exe
+          if-no-files-found: error
+
+  macos:
+    name: Mac (${{ matrix.arch }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: brew install pkgconf nasm webp
+      # ffmpeg is built from source (scripts/build-ffmpeg.sh) and takes a while, so it is kept between runs.
+      - uses: actions/cache@v4
+        with:
+          path: build/ffmpeg/bin/ffmpeg
+          key: ffmpeg-${{ matrix.arch }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+      - name: Build ffmpeg
+        run: '[ -x build/ffmpeg/bin/ffmpeg ] || zsh scripts/build-ffmpeg.sh'
+      - name: Build the app and the disk image
+        run: |
+          zsh scripts/build-app.sh --dmg
+          mv build/Adawat-*.dmg "build/Adawat-${{ matrix.arch }}.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: build/Adawat-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+
+  linux:
+    name: Linux packages
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install nfpm and squashfs-tools
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/nfpm.deb" https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_amd64.deb
+          sudo apt-get install -y "$RUNNER_TEMP/nfpm.deb" squashfs-tools
+      - name: Build .deb, .rpm and AppImage for x64 and ARM64
+        # build-packages.sh publishes with dotnet; the update repository reaches it through MSBuild's environment.
+        env:
+          UpdateRepository: ${{ env.UPDATE_REPOSITORY }}
+        run: linux/tools/build-packages.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            linux/build/packages/*.deb
+            linux/build/packages/*.rpm
+            linux/build/packages/*.AppImage
+          if-no-files-found: error
+
+  android:
+    name: Android APK
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Fetch the native libraries
+        run: android/tools/fetch-native.sh
+      - name: Build the release APK
+        working-directory: android
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          signing=()
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+            signing=(-Padawat.storeFile="$RUNNER_TEMP/upload.jks" -Padawat.storePassword="$STORE_PASSWORD"
+                     -Padawat.keyAlias="$KEY_ALIAS" -Padawat.keyPassword="$KEY_PASSWORD")
+          fi
+          ./gradlew --no-daemon assembleRelease -Padawat.updateRepository="$UPDATE_REPOSITORY" "${signing[@]}"
+          mkdir -p dist
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk dist/Adawat-Android.apk
+          else
+            # Unsigned: Android will not install it. The name keeps the in-app updater from offering it.
+            echo "::warning::No signing key in the repository secrets, so the APK is unsigned and cannot be installed. See docs/RELEASING.md."
+            cp app/build/outputs/apk/release/app-release-unsigned.apk dist/Adawat-Android-unsigned.apk
+          fi
+          rm -f "$RUNNER_TEMP/upload.jks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: android/dist/*.apk
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    needs: [test, windows, macos, linux, android]
+    # A platform that failed to build leaves its files out; the draft says which, and nothing is published.
+    if: ${{ !cancelled() && needs.test.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write the release notes
+        env:
+          VERSION: ${{ needs.test.outputs.version }}
+          WINDOWS: ${{ needs.windows.result }}
+          MACOS: ${{ needs.macos.result }}
+          LINUX: ${{ needs.linux.result }}
+          ANDROID: ${{ needs.android.result }}
+        run: |
+          cd dist && sha256sum * > SHA256SUMS && cd ..
+          {
+            echo "## Adawat $VERSION"
+            echo
+            echo "A modified build of [Adawat](https://github.com/motalim-ai/adawat) from ${{ github.repository }}."
+            echo "It checks this repository for updates."
+            echo
+            missing=""
+            for pair in "Windows:$WINDOWS" "Mac:$MACOS" "Linux:$LINUX" "Android:$ANDROID"; do
+              [ "${pair#*:}" = success ] || missing="$missing ${pair%%:*}"
+            done
+            if [ -n "$missing" ]; then
+              echo "> [!WARNING]"
+              echo "> Not built this time:$missing. See the workflow run for the errors."
+              echo
+            fi
+            cat .github/release-install.md
+            echo
+            echo "### Checksums (SHA-256)"
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > notes.md
+          cat notes.md
+      - name: Upload to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.test.outputs.version }}
+        run: |
+          if state=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$state" != true ]; then
+              echo "::error::$TAG is already published. Raise the version before releasing again."
+              exit 1
+            fi
+            # Running the workflow again replaces the files of the draft that is still waiting.
+            gh release edit "$TAG" --notes-file notes.md --target "$GITHUB_SHA"
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --draft --target "$GITHUB_SHA" --title "Adawat ${TAG#v}" --notes-file notes.md --generate-notes
+          fi
+          echo "Draft ready: $(gh release view "$TAG" --json url --jq .url)" >> "$GITHUB_STEP_SUMMARY"

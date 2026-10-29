@@ -11,9 +11,11 @@ android {
         applicationId = "com.motalim.adawat"
         minSdk = 29
         targetSdk = 37
-        versionName = "1.1.0"
+        versionName = "1.1.1"
         // 1.2.3 → 10203, so every release installs over the one before it.
         versionCode = versionName!!.split(".").fold(0) { code, part -> code * 100 + part.toInt() }
+        // Where the app looks for updates. A fork's release workflow sets its own (-Padawat.updateRepository=owner/repo).
+        buildConfigField("String", "UPDATE_REPOSITORY", "\"${providers.gradleProperty("adawat.updateRepository").getOrElse("motalim-ai/adawat")}\"")
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 

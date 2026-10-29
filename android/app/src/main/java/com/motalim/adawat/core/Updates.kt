@@ -21,7 +21,8 @@ data class Release(val version: String, val notes: String, val download: String,
  * Android then installs it over this one, which it allows only when the APK is signed with the same key.
  */
 object Updates {
-    const val REPOSITORY = "motalim-ai/adawat"
+    /** The GitHub repository whose releases this build installs: set at build time (adawat.updateRepository). */
+    const val REPOSITORY = BuildConfig.UPDATE_REPOSITORY
     private const val ASSET = "Adawat-Android.apk"
 
     val current: String get() = BuildConfig.VERSION_NAME

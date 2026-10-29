@@ -59,7 +59,7 @@ sed -i '' 's/-force_cpusubtype_ALL//g' "$SRC/vorbis/configure"
   && make -j$JOBS && make install); }
 
 have libvpx.a || { echo "== libvpx"; unpack "libvpx-$VPX.tar.gz" vpx
-TARGET=$(cd "$SRC/vpx" && { ./configure --help || true; } | grep -oE 'arm64-darwin[0-9]+-gcc' | sort -V | tail -1)
+TARGET=$(cd "$SRC/vpx" && { ./configure --help || true; } | grep -oE "$(uname -m)-darwin[0-9]+-gcc" | sort -V | tail -1)
 (cd "$SRC/vpx" && ./configure --prefix="$PREFIX" --target="$TARGET" --disable-shared --enable-static --disable-examples \
   --disable-unit-tests --disable-docs --disable-tools --enable-vp9-highbitdepth && make -j$JOBS && make install); }
 
