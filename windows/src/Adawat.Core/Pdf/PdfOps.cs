@@ -489,6 +489,9 @@ public static class PdfOps
             if (decoded.ColorSpace == ColorSpace.CMYK) return;
             if (Math.Max(decoded.Width, decoded.Height) > maxPixels) decoded.Resize(new MagickGeometry((uint)maxPixels, (uint)maxPixels));
             decoded.Quality = (uint)quality;
+            // Same pixels, smaller file: optimized Huffman tables, written progressively.
+            decoded.Settings.Interlace = Interlace.Jpeg;
+            decoded.Settings.SetDefine(MagickFormat.Jpeg, "optimize-coding", "true");
             decoded.Strip();
             var jpeg = decoded.ToByteArray(MagickFormat.Jpeg);
             if (jpeg.Length >= image.Stream.Length * 0.9) return;
