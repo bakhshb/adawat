@@ -20,7 +20,7 @@ If one platform fails to build, the others are still uploaded, and the draft nam
 | --- | --- | --- |
 | Tests and version | ubuntu-latest | Runs `dotnet test` on `windows/tests/Adawat.Core.Tests` and checks the versions match. Nothing builds if this fails. |
 | Windows installers | windows-latest | `Adawat-Setup-x64.exe`, `Adawat-Setup-arm64.exe` (Inno Setup, as `windows/tools/build-installer.sh` does) |
-| Mac | macos-15 and macos-15-intel | `Adawat-arm64.dmg`, `Adawat-x86_64.dmg` (`scripts/build-ffmpeg.sh`, then `scripts/build-app.sh --dmg`) |
+| Mac | macos-26 (Apple silicon) and macos-15-intel | `Adawat-arm64.dmg`, `Adawat-x86_64.dmg` (`scripts/build-ffmpeg.sh`, then `scripts/build-app.sh --dmg`) |
 | Linux packages | ubuntu-latest | .deb, .rpm and AppImage for x64 and ARM64 (`linux/tools/build-packages.sh`) |
 | Android APK | ubuntu-latest | `Adawat-Android.apk` (`./gradlew assembleRelease`) |
 | Draft release | ubuntu-latest | The draft release, with all the files and `SHA256SUMS` |

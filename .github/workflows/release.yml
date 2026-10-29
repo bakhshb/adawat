@@ -97,12 +97,19 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-15
+            runner: macos-26
           - arch: x86_64
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      # The runner's default Xcode can be older than the one the app is written with, and older Swift compilers
+      # reject some of its maths as ambiguous.
+      - name: Use the newest Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_*.app | grep -iv beta | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
       - name: Install build tools
         run: brew install pkgconf nasm webp
       # ffmpeg is built from source (scripts/build-ffmpeg.sh) and takes a while, so it is kept between runs.
