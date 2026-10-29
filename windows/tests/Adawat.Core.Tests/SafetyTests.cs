@@ -94,4 +94,29 @@ public sealed class SafetyTests : IDisposable
         using var reader = new StreamReader(result.GetEntry("content.xml")!.Open());
         Assert.Equal("""<p style:font-independent-line-spacing="false"/>""", reader.ReadToEnd());
     }
+
+    [Fact]
+    public async Task CompressKeepsOnlyThePixelsThePageShows()
+    {
+        var photo = Path.Combine(_folder, "photo.jpg");
+        using (var noise = new ImageMagick.MagickImage("plasma:", 3000, 2000)) noise.Write(photo);
+        var pdf = Path.Combine(_folder, "small photo.pdf");
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            using var graphics = PdfSharp.Drawing.XGraphics.FromPdfPage(document.AddPage());
+            using var image = PdfSharp.Drawing.XImage.FromFile(photo);
+            graphics.DrawImage(image, 72, 72, 360, 240); // 5 x 3.3 inches: 750 pixels wide at 150 dpi
+            graphics.Dispose();
+            document.Save(pdf);
+        }
+        Settings.Current.CompressPreset = CompressPreset.Balanced;
+
+        var output = (await Pdf.PdfOps.Compress([pdf], new OperationContext())).Single();
+
+        using var result = PdfSharp.Pdf.IO.PdfReader.Open(output, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        var resized = result.Pages[0].Resources.Elements.GetDictionary("/XObject")!.Elements.Values
+            .Select(item => (PdfSharp.Pdf.PdfDictionary)((PdfSharp.Pdf.Advanced.PdfReference)item).Value).Single();
+        // Not the 1800 pixels the preset allows a picture of unknown size, and not below the floor that keeps logos sharp.
+        Assert.Equal(800, resized.Elements.GetInteger("/Width"));
+    }
 }
