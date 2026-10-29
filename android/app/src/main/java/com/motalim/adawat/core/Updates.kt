@@ -28,7 +28,7 @@ object Updates {
 
     /** The latest release when it is newer than this app and has an APK with a checksum, otherwise null. */
     suspend fun latest(): Release? = withContext(Dispatchers.IO) {
-        val connection = open("https://api.github.com/repos/$REPOSITORY/releases/latest").apply { connectTimeout = 20_000; readTimeout = 20_000 }
+        val connection = open("https://api.github.com/repos/$REPOSITORY/releases/latest")
         val json = connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
         parse(json, current)
     }
@@ -100,6 +100,8 @@ object Updates {
 
     private fun open(url: String) = (URL(url).openConnection() as HttpURLConnection).apply {
         setRequestProperty("User-Agent", "Adawat/$current")
+        connectTimeout = 20_000
+        readTimeout = 30_000
         instanceFollowRedirects = true
     }
 }
