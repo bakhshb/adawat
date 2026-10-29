@@ -77,12 +77,36 @@ public static class Office
         }
         if (LibreOffice is { } soffice)
         {
+            // Through ODP so the line heights can follow the font: see UseFontLineHeights.
             using var temp = Output.Temp();
-            await Convert(soffice, path, "pdf", temp.Path);
-            File.Move(Path.Combine(temp.Path, Path.GetFileNameWithoutExtension(path) + ".pdf"), output, true);
+            var name = Path.GetFileNameWithoutExtension(path);
+            await Convert(soffice, path, "odp", temp.Path);
+            var odp = Path.Combine(temp.Path, name + ".odp");
+            UseFontLineHeights(odp);
+            await Convert(soffice, odp, "pdf", temp.Path);
+            File.Move(Path.Combine(temp.Path, name + ".pdf"), output, true);
             return;
         }
         throw new AdawatException(OperatingSystem.IsWindows() ? "Microsoft PowerPoint is needed for this file." : Missing);
+    }
+
+    /// <summary>LibreOffice opens PowerPoint files with font-independent line spacing: lines as tall as the font size,
+    /// whatever the font's ascent and descent. Tall Arabic fonts and their diacritics then overlap the next line
+    /// (motalim-ai/adawat#2), so each paragraph is switched back to the font's own line height.</summary>
+    internal static void UseFontLineHeights(string odp)
+    {
+        using var zip = System.IO.Compression.ZipFile.Open(odp, System.IO.Compression.ZipArchiveMode.Update);
+        foreach (var part in new[] { "content.xml", "styles.xml" })
+        {
+            if (zip.GetEntry(part) is not { } entry) continue;
+            string xml;
+            using (var reader = new StreamReader(entry.Open())) xml = reader.ReadToEnd();
+            var fixedXml = xml.Replace("font-independent-line-spacing=\"true\"", "font-independent-line-spacing=\"false\"");
+            if (fixedXml == xml) continue;
+            entry.Delete();
+            using var writer = new StreamWriter(zip.CreateEntry(part).Open());
+            writer.Write(fixedXml);
+        }
     }
 
     /// <summary>A presentation saved as PowerPoint (.pptx), from .ppt or .odp.</summary>
