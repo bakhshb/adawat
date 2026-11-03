@@ -68,6 +68,10 @@ with `--enable-gpl --enable-version3` and without nonfree components, so the bin
 [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.html). Its license text ships next to it as
 `tools\ffmpeg-LICENSE.txt`. It runs as a separate program; Adawat calls it and does not link to it.
 
+BtbN deletes its daily builds after a few weeks. When the release above is gone, `windows/tools/fetch-ffmpeg.sh` takes
+the newest FFmpeg 8.1 build instead (BtbN's `latest` release, `ffmpeg-n8.1-latest-*-gpl-8.1`), built by the same
+scripts; the build log of that Adawat release records the archive and its SHA-256.
+
 **Corresponding source.** FFmpeg at commit `46d899d7a0` (https://github.com/FFmpeg/FFmpeg), and the build scripts
 that pin every bundled library and its version at the release tag above
 (https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-10-18-13-01). `windows/tools/fetch-ffmpeg.sh` downloads
@@ -123,6 +127,7 @@ The .deb and .rpm use the distribution's own `ffmpeg`. The AppImage carries `usr
 [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), release `autobuild-2026-10-18-13-01`, the same build as
 the Windows app, configured with `--enable-gpl --enable-version3` and without nonfree components. Its license text
 ships next to it as `FFMPEG-LICENSE.txt`. It runs as a separate program; Adawat calls it and does not link to it.
+When that BtbN release is gone, `linux/tools/fetch-ffmpeg.sh` takes the newest FFmpeg 8.1 build instead, as on Windows.
 
 **Corresponding source.** As for Windows above. `linux/tools/fetch-ffmpeg.sh` downloads exactly these archives:
 
